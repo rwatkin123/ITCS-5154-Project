@@ -1,0 +1,107 @@
+
+#BotV1
+from datetime import datetime
+
+context = {
+    "awaiting_human_confirmation": False
+}
+fallback_count = 0
+
+def get_intent(user_input):
+    user_input = user_input.lower()
+    if "refund" in user_input or "charge" in user_input:
+        return "billing"
+    elif "not working" in user_input or "error" in user_input or "issue" in user_input:
+        return "tech_support"
+    elif "human" in user_input or "representative" in user_input:
+        return "escalate"
+    elif "name is" in user_input:
+        return "store_name"
+    elif any(greeting in user_input for greeting in ["hi", "hello", "hey", "howdy"]):
+        return "greeting"
+    elif any(ask in user_input for ask in ["how are you", "how's it going", "how are you doing", "what's up"]):
+        return "how_are_you"
+    elif any(feeling in user_input for feeling in ["good", "bad", "great", "okay", "fine", "meh"]):
+        return "feeling_response"
+    elif "thank you" in user_input or "thanks" in user_input:
+        return "gratitude"
+    elif "bye" in user_input or "goodbye" in user_input:
+        return "goodbye"
+    else:
+        return "unknown"
+
+def respond(user_input):
+    global fallback_count
+
+    # Check if waiting for human confirmation
+    if context.get("awaiting_human_confirmation"):
+        if user_input.lower() in ["yes", "yeah", "yep", "sure"]:
+            context["awaiting_human_confirmation"] = False
+            return "Okay, getting human help."
+        elif user_input.lower() in ["no", "nah", "not now"]:
+            context["awaiting_human_confirmation"] = False
+            return "Okay, how else can I help you today?"
+        else:
+            return "Are you sure you want a human?"
+
+    intent = get_intent(user_input)
+
+    if intent == "greeting":
+        current_hour = datetime.now().hour
+        if 5 <= current_hour < 12:
+            return "Good morning. How can I help you today?"
+        elif 12 <= current_hour < 18:
+            return "Good afternoon. How can I help you today?"
+        else:
+            return "Good evening. How can I help you today?"
+
+    if intent == "how_are_you":
+        return "I'm good. thanks for asking. How about you?"
+
+    if intent == "feeling_response":
+        if "good" in user_input or "great" in user_input or "fine" in user_input:
+            return "Good to hear your day is going well. :)"
+        elif "bad" in user_input or "not good" in user_input:
+            return "Sorry to hear that. That is unfortunate. :("
+        elif "okay" in user_input or "meh" in user_input:
+            return "Sorry to hear your day is just okay. :|"
+
+    if intent == "gratitude":
+        return "You're welcome. Bye."
+
+    if intent == "goodbye":
+        return "Thank you for reaching out."
+
+    if intent == "store_name":
+        name = user_input.split("name is")[-1].strip().capitalize()
+        context["name"] = name
+        return f"Nice to meet you, {name}. How can I help?"
+
+    if intent == "billing":
+        return "I'm sorry you're having a billing issue'. Could you describe the problem in more detail?"
+
+    if intent == "tech_support":
+        return "I'm sorry you're having tech issues. Could you describe the problem in more detail?"
+
+    if intent == "escalate":
+        context["awaiting_human_confirmation"] = True
+        return "Do you want human help now?"
+
+    if intent == "unknown":
+        fallback_count += 1
+        if fallback_count >= 3:
+            return "I’m sorry for the confusion. I'll get you a human."
+        return "Sorry, I don't understand. Could you repeat?"
+
+def main():
+    print("Hello, I can help you. Ask about billing, technical issues, or get a human.")
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() in ["exit", "quit"]:
+            print("Bot: Thanks.")
+            break
+        response = respond(user_input)
+        print(f"Bot: {response}")
+
+if __name__ == "__main__":
+    main()
