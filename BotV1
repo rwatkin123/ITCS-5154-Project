@@ -1,19 +1,69 @@
-
-#BotV1
+Botv2
 from datetime import datetime
+import random
 
 context = {
-    "awaiting_human_confirmation": False
+    "awaiting_human_confirmation": False,
+    "awaiting_billing_followup": False,
+    "awaiting_post_connection_response": False,
+    "clarification_attempted": False,
+    "name": None
 }
+
 fallback_count = 0
+
+BILLING_CLARIFICATION_PROMPTS = [
+    "That's okay. Could you tell me if it’s about a wrong amount, a double charge, or something else?",
+    "No problem. Was it a double charge, a billing error, or something else?",
+    "OKay. Is it an issue with the amount charged or with multiple charges?",
+]
+
+TECH_CLARIFICATION_PROMPTS = [
+    "I see. Could you tell me if it’s an issue with your device, software, or network connection?",
+    "Got it. Is this a problem with your internet, your device, or a software bug?",
+    "Sure, is it related to a hardware issue, a software glitch, or something else?"
+]
+
+# List of unrelated topics
+UNRELATED_TOPICS = ["pet", "dog", "cat", "hospital", "doctor", "school", "teacher", "homework", "food", "restaurant", "weather", "vacation", "trip", "travel"]
+
+def collect_feedback():
+    print("\nBefore you go, could you rate your experience with me?")
+
+    while True:
+        satisfaction = input("On a scale from 1 (terrible) to 5 (great): ")
+        if satisfaction in ["1", "2", "3", "4", "5"]:
+            break
+        else:
+            print("Please enter a number between 1 and 5.")
+    
+    while True:
+        preference = input("Would you prefer talking to a bot or a human in the future? (bot/human): ").lower()
+        if preference in ["bot", "human"]:
+            break
+        else:
+            print("Please answer with 'bot' or 'human'.")
+    
+    print(f"Thanks for your feedback {context.get('name', 'User')}! You rated me a {satisfaction}/5 and prefer talking to a {preference}.")
+
+    # Save feedback to a file
+    with open("satisfaction_feedback.txt", "a") as file:
+        file.write(f"{datetime.now().isoformat()} - Satisfaction Rating: {satisfaction}, Preference: {preference}\n")
+
+def is_unrelated_topic(user_input):
+    """Check if the user's input contains an unrelated topic."""
+    for word in UNRELATED_TOPICS:
+        if word in user_input.lower():
+            return True
+    return False
 
 def get_intent(user_input):
     user_input = user_input.lower()
-    if "refund" in user_input or "charge" in user_input:
+    if "charged twice" in user_input or "refund" in user_input or "charge" in user_input:
         return "billing"
-    elif "not working" in user_input or "error" in user_input or "issue" in user_input:
+    elif "internet isn't working" in user_input or "internet not working" in user_input or "not working" in user_input or "error" in user_input or "issue" in user_input:
         return "tech_support"
-    elif "human" in user_input or "representative" in user_input:
+    elif "talk to someone real" in user_input or "human" in user_input or "representative" in user_input:
         return "escalate"
     elif "name is" in user_input:
         return "store_name"
@@ -21,7 +71,7 @@ def get_intent(user_input):
         return "greeting"
     elif any(ask in user_input for ask in ["how are you", "how's it going", "how are you doing", "what's up"]):
         return "how_are_you"
-    elif any(feeling in user_input for feeling in ["good", "bad", "great", "okay", "fine", "meh"]):
+    elif any(feeling in user_input for feeling in ["good", "bad", "great", "okay", "ok", "fine", "meh"]):
         return "feeling_response"
     elif "thank you" in user_input or "thanks" in user_input:
         return "gratitude"
@@ -33,30 +83,78 @@ def get_intent(user_input):
 def respond(user_input):
     global fallback_count
 
-    # Check if waiting for human confirmation
+    intent = get_intent(user_input)  
+
+    if "time" in user_input.lower():
+            current_time = datetime.now().strftime("%H:%M:%S")
+            return f"The current time is {current_time}."
+
+    if context.get("awaiting_post_connection_response"):
+        if "thank" in user_input.lower():
+            # choose support agent based on issue type
+            support_agent = "Bill" if context.get("awaiting_billing_followup") else "Taylor"
+            print(f"Bot: You're welcome, {context.get('name', '')}! {support_agent} from {'Billing' if context.get('awaiting_billing_followup') else 'Tech'} Support will assist you shortly. Have a great day!")
+            collect_feedback()
+            exit()
+        else:
+            support_agent = "Bill" if context.get("awaiting_billing_followup") else "Taylor"
+            print(f"Bot: Please hold — {support_agent} from {'Billing' if context.get('awaiting_billing_followup') else 'Tech'} Support will be with you soon.")
+            collect_feedback()
+            exit()
+
+
     if context.get("awaiting_human_confirmation"):
         if user_input.lower() in ["yes", "yeah", "yep", "sure"]:
             context["awaiting_human_confirmation"] = False
-            return "Okay, getting human help."
+            return "Okay, connecting you to a human agent now."
         elif user_input.lower() in ["no", "nah", "not now"]:
             context["awaiting_human_confirmation"] = False
             return "Okay, how else can I help you today?"
         else:
             return "Are you sure you want a human?"
 
-    intent = get_intent(user_input)
+
+    # Check if billing or tech support
+    if context.get("awaiting_billing_followup"):
+        if user_input.strip().lower() in ["no", "nah", "idk", "don't know", "not sure"]:
+            if not context.get("clarification_attempted"):
+                context["clarification_attempted"] = True
+                return random.choice(BILLING_CLARIFICATION_PROMPTS)
+            else:
+                context["awaiting_billing_followup"] = False
+                context["awaiting_post_connection_response"] = True
+                return "Ok, I’ll connect you to Bill from Billing Support."
+        else:
+            context["awaiting_billing_followup"] = False
+            context["awaiting_post_connection_response"] = True
+            return "Ok, I’ll connect you to Bill from Billing Support."
+
+    if context.get("awaiting_tech_followup"):
+        if user_input.strip().lower() in ["no", "nah", "idk", "don't know", "not sure"]:
+            if not context.get("clarification_attempted"):
+                context["clarification_attempted"] = True
+                return random.choice(TECH_CLARIFICATION_PROMPTS)
+            else:
+                context["awaiting_tech_followup"] = False
+                context["awaiting_post_connection_response"] = True
+                return "Ok, I’ll connect you to Taylor from Tech Support."
+        else:
+            context["awaiting_tech_followup"] = False
+            context["awaiting_post_connection_response"] = True
+            return "Ok, I’ll connect you to Taylor from Tech Support."
 
     if intent == "greeting":
         current_hour = datetime.now().hour
         if 5 <= current_hour < 12:
-            return "Good morning. How can I help you today?"
+            return f"Good morning, {context['name']}. How can I help you today?"
         elif 12 <= current_hour < 18:
-            return "Good afternoon. How can I help you today?"
+            return f"Good afternoon, {context['name']}. How can I help you today?"
         else:
-            return "Good evening. How can I help you today?"
+            return f"Good evening, {context['name']}. How can I help you today?"
+
 
     if intent == "how_are_you":
-        return "I'm good. thanks for asking. How about you?"
+        return "I'm good, thanks for asking. How about you?"
 
     if intent == "feeling_response":
         if "good" in user_input or "great" in user_input or "fine" in user_input:
@@ -67,22 +165,29 @@ def respond(user_input):
             return "Sorry to hear your day is just okay. :|"
 
     if intent == "gratitude":
-        return "You're welcome. Bye."
+        return f"You're welcome. Have a nice day, {context['name']}"
+
 
     if intent == "goodbye":
-        return "Thank you for reaching out."
+        return f"Thank you for reaching out. Have a nice day, {context['name']}"
+ 
 
     if intent == "store_name":
         name = user_input.split("name is")[-1].strip().capitalize()
         context["name"] = name
         return f"Nice to meet you, {name}. How can I help?"
 
+    # billing issue follow-up
     if intent == "billing":
-        return "I'm sorry you're having a billing issue'. Could you describe the problem in more detail?"
+        context["awaiting_billing_followup"] = True
+        return f"I'm sorry you're having a billing issue, {context['name']}. Could you describe the problem in more detail?"
 
+    # tech support intent
     if intent == "tech_support":
+        context["awaiting_tech_followup"] = True
         return "I'm sorry you're having tech issues. Could you describe the problem in more detail?"
 
+    # Handle escalation intent
     if intent == "escalate":
         context["awaiting_human_confirmation"] = True
         return "Do you want human help now?"
@@ -91,17 +196,40 @@ def respond(user_input):
         fallback_count += 1
         if fallback_count >= 3:
             return "I’m sorry for the confusion. I'll get you a human."
-        return "Sorry, I don't understand. Could you repeat?"
+        return f"Sorry, I don't understand you, {context.get('name', 'User')}. Could you repeat?"
+    
+
 
 def main():
     print("Hello, I can help you. Ask about billing, technical issues, or get a human.")
+    
+    if "name" not in context or not context["name"]:
+        print("Bot: Before we start, what’s your name?")
+        user_input = input("You: ")
+        context["name"] = user_input.strip().capitalize()
+
+    # Greeting based on time of day
+    current_hour = datetime.now().hour
+    if 5 <= current_hour < 12:
+        greeting = f"Good morning, {context['name']}. How can I help you today?"
+    elif 12 <= current_hour < 18:
+        greeting = f"Good afternoon, {context['name']}. How can I help you today?"
+    else:
+        greeting = f"Good evening, {context['name']}. How can I help you today?"
+    
+    print(f"Bot: {greeting}")
+
     while True:
         user_input = input("You: ")
+        
         if user_input.lower() in ["exit", "quit"]:
-            print("Bot: Thanks.")
+            print(f"Bot: Thanks {context.get('name', '')}.")
+            collect_feedback() 
             break
+        
         response = respond(user_input)
         print(f"Bot: {response}")
 
 if __name__ == "__main__":
     main()
+
